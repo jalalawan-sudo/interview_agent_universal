@@ -462,6 +462,57 @@ Format in clean markdown."""
         return jsonify({"summary": f"Error: {str(e)[:150]}"}), 500
 
 
+@app.route("/expand", methods=["POST"])
+@rate_limit(max_calls=30, window=60)
+def expand():
+    client = get_client()
+    if not client:
+        return jsonify({"error": "API key not configured."}), 401
+
+    data = request.get_json(silent=True) or {}
+    point = str(data.get("point", "")).strip()[:500]
+    briefing = str(data.get("briefing", "")).strip()[:8000]
+
+    if not point:
+        return Response(stream_with_context(iter([])), mimetype="text/event-stream")
+
+    profile = load_profile()
+    system = build_system_prompt(profile)
+    context = f"SESSION BRIEFING:\n{briefing}\n\n---\n" if briefing else ""
+    user_msg = f"""{context}The user wants a deeper, more detailed explanation of this specific talking point:
+
+\"{point}\"
+
+Expand on it with 3-5 focused paragraphs or bullets that:
+- Explain the underlying mechanism, policy detail, or technical specifics
+- Cite concrete data, legislation, dollar figures, dates, or case law
+- Give a real-world example or analogy that makes this land in conversation
+- Suggest a sharp follow-up question the user could raise or anticipate being asked
+
+Be authoritative and specific. No hedging or deflecting."""
+
+    def generate():
+        try:
+            with client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=800,
+                system=system,
+                messages=[{"role": "user", "content": user_msg}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps(text)}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps(f'Error: {str(e)[:100]}')}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.route("/extract", methods=["POST"])
 @rate_limit(max_calls=20, window=60)
 def extract():

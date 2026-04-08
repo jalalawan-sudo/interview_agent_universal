@@ -858,63 +858,115 @@
     margin-top: 24px;
   }
 
-  /* ---- BULLET FEEDBACK (tick / cross on talking points) ---- */
+  /* ---- BULLET FEEDBACK (tick / cross / expand on talking points) ---- */
   .bullet-row {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 14px;
-    padding: 6px 8px;
-    border-radius: 6px;
-    transition: background 0.12s;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: background 0.12s, opacity 0.4s;
+    border: 1px solid transparent;
   }
 
-  .bullet-row:hover { background: rgba(255,255,255,0.03); }
-  .bullet-row:hover .bullet-fb { opacity: 1; }
+  .bullet-row:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
+
+  .bullet-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
 
   .bullet-text {
-    flex: 1;
     font-size: 21px;
     line-height: 1.6;
     color: var(--text);
   }
 
+  /* Inline expansion panel under each bullet */
+  .expansion-panel {
+    display: none;
+    margin-top: 12px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--text2);
+  }
+
+  .expansion-panel.open { display: block; }
+  .expansion-panel strong { color: var(--green); }
+
+  .expand-loading {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 13px;
+  }
+
+  /* Right side controls */
   .bullet-fb {
     display: flex;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.15s;
+    flex-direction: column;
+    gap: 5px;
     flex-shrink: 0;
-    padding-top: 4px;
+    padding-top: 2px;
+    align-items: center;
   }
 
   .fb-btn {
-    width: 26px;
-    height: 26px;
-    border-radius: 5px;
-    border: 1px solid var(--border2);
-    background: var(--surface);
-    font-size: 13px;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    border: 1.5px solid var(--border2);
+    background: var(--surface2);
+    font-size: 15px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.12s;
-    color: var(--muted);
+    color: var(--text2);
     padding: 0;
     line-height: 1;
+    font-weight: 700;
   }
 
-  .fb-tick:hover { background: rgba(47,212,117,0.15); border-color: var(--green); color: var(--green); }
-  .fb-cross:hover { background: rgba(224,82,96,0.15); border-color: var(--red); color: var(--red); }
+  .fb-tick { color: var(--green); border-color: rgba(47,212,117,0.35); background: rgba(47,212,117,0.06); }
+  .fb-tick:hover { background: rgba(47,212,117,0.2); border-color: var(--green); }
+
+  .fb-cross { color: var(--red); border-color: rgba(224,82,96,0.35); background: rgba(224,82,96,0.06); }
+  .fb-cross:hover { background: rgba(224,82,96,0.2); border-color: var(--red); }
+
+  .expand-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    border: 1.5px solid var(--border2);
+    background: var(--surface2);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+    color: var(--accent);
+    padding: 0;
+    line-height: 1;
+    font-weight: 700;
+  }
+
+  .expand-btn:hover { background: rgba(77,142,240,0.15); border-color: var(--accent); }
+  .expand-btn.open { background: rgba(77,142,240,0.15); border-color: var(--accent); }
 
   .bullet-row.marked-good .bullet-text { color: var(--green); }
-  .bullet-row.marked-good .fb-tick { background: rgba(47,212,117,0.15); border-color: var(--green); color: var(--green); opacity: 1; }
-  .bullet-row.marked-bad { opacity: 0.35; }
-  .bullet-row.marked-bad .fb-cross { background: rgba(224,82,96,0.15); border-color: var(--red); color: var(--red); opacity: 1; }
-  .bullet-row.marked-bad .bullet-text { text-decoration: line-through; }
+  .bullet-row.marked-good .fb-tick { background: rgba(47,212,117,0.25); border-color: var(--green); }
 
-  .fb-btn:disabled { cursor: default; }
+  .fb-btn:disabled, .expand-btn:disabled { cursor: default; opacity: 0.4; }
 
   /* ---- SOURCE ATTACHMENTS in Briefing tab ---- */
   .source-bar {
@@ -1517,27 +1569,113 @@ function markPoint(btn, type) {
     points.unshift({ text, date: new Date().toISOString() });
     localStorage.setItem(key, JSON.stringify(points.slice(0, 100)));
   }
-  row.classList.remove('marked-good', 'marked-bad');
-  row.classList.add(type === 'good' ? 'marked-good' : 'marked-bad');
-  row.querySelectorAll('.fb-btn').forEach(b => { b.disabled = true; });
+  if (type === 'bad') {
+    // Show the cross briefly, then fade and remove the row entirely
+    row.classList.add('marked-bad');
+    row.querySelectorAll('.fb-btn, .expand-btn').forEach(b => { b.disabled = true; });
+    setTimeout(() => {
+      row.style.transition = 'opacity 0.5s, max-height 0.5s';
+      row.style.opacity = '0';
+      row.style.overflow = 'hidden';
+      row.style.maxHeight = row.offsetHeight + 'px';
+      requestAnimationFrame(() => { row.style.maxHeight = '0'; row.style.marginBottom = '0'; });
+      setTimeout(() => row.remove(), 500);
+    }, 700);
+  } else {
+    row.classList.add('marked-good');
+    row.querySelectorAll('.fb-btn').forEach(b => { b.disabled = true; });
+  }
 }
 
-// Render markdown WITH tick/cross buttons (used after stream completes)
+// Map from expansion panel ID → point text (set during renderMarkdownWithFeedback)
+const _expandPoints = {};
+let _epCounter = 0;
+
+// Render markdown WITH tick/cross/expand buttons (used after stream completes)
 function renderMarkdownWithFeedback(text) {
   let html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/^[-*]\s+(.+)$/gm, (match, content) => {
     const plainText = content.replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
     const escaped = plainText.replace(/"/g, '&quot;');
+    const uid = 'ep' + (++_epCounter);
+    _expandPoints[uid] = plainText;
     return `<div class="bullet-row">
-      <div class="bullet-text">&#8226;&nbsp;${content}</div>
+      <div class="bullet-main">
+        <div class="bullet-text">&#8226;&nbsp;${content}</div>
+        <div class="expansion-panel" id="${uid}"></div>
+      </div>
       <div class="bullet-fb">
-        <button class="fb-btn fb-tick" onclick="markPoint(this,'good')" data-text="${escaped}" title="Useful">&#10003;</button>
-        <button class="fb-btn fb-cross" onclick="markPoint(this,'bad')" data-text="${escaped}" title="Not useful">&#10007;</button>
+        <button class="fb-btn fb-tick" onclick="markPoint(this,'good')" data-text="${escaped}" title="Good point &#10003;">&#10003;</button>
+        <button class="fb-btn fb-cross" onclick="markPoint(this,'bad')" data-text="${escaped}" title="Remove &#10007;">&#10007;</button>
+        <button class="expand-btn" onclick="expandPoint(this,'${uid}')" title="Expand this point">&#8645;</button>
       </div>
     </div>`;
   });
   html = html.replace(/\n{2,}/g, '<br/><br/>').replace(/\n/g, '<br/>');
   return html;
+}
+
+// =====================================================================
+// EXPAND POINT — stream deeper detail for a specific talking point
+// =====================================================================
+async function expandPoint(btn, uid) {
+  const panel = document.getElementById(uid);
+  if (!panel) return;
+
+  // Toggle collapse if already loaded
+  if (panel.dataset.loaded === 'true') {
+    const isOpen = panel.classList.contains('open');
+    panel.classList.toggle('open', !isOpen);
+    btn.classList.toggle('open', !isOpen);
+    btn.title = isOpen ? 'Expand this point' : 'Collapse';
+    return;
+  }
+
+  const text = _expandPoints[uid];
+  if (!text) return;
+
+  panel.classList.add('open');
+  btn.classList.add('open');
+  btn.disabled = true;
+  panel.innerHTML = '<div class="expand-loading">Expanding&#8230;</div>';
+
+  try {
+    const res = await fetch('/expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ point: text, briefing: activeBriefing }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = '';
+    panel.innerHTML = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ')) {
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') break;
+          try {
+            accumulated += JSON.parse(raw);
+            panel.innerHTML = renderMarkdown(accumulated);
+          } catch {}
+        }
+      }
+    }
+
+    panel.dataset.loaded = 'true';
+    btn.disabled = false;
+    btn.title = 'Collapse';
+  } catch (e) {
+    panel.innerHTML = `<span style="color:var(--red);font-size:13px;">Error: ${escHtml(e.message)}</span>`;
+    btn.disabled = false;
+    btn.classList.remove('open');
+    panel.classList.remove('open');
+  }
 }
 
 // =====================================================================
