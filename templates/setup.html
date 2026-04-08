@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Setup — Interview Agent Universal</title>
+<style>
+  :root {
+    --bg: #09090f;
+    --surface: #111118;
+    --surface2: #17171f;
+    --border: #1e1e2c;
+    --border2: #28283a;
+    --accent: #4d8ef0;
+    --green: #2fd475;
+    --red: #e05260;
+    --text: #e2e2ed;
+    --text2: #9898b0;
+    --muted: #50506a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    padding: 40px 44px;
+    max-width: 520px;
+    width: 100%;
+  }
+
+  .logo {
+    font-size: 28px;
+    margin-bottom: 6px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+
+  .step {
+    margin-bottom: 32px;
+  }
+
+  .step-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .step-num {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--border2);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--text2);
+    flex-shrink: 0;
+  }
+
+  .step-num.done {
+    background: var(--green);
+    color: #07190d;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 7px;
+  }
+
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    font-family: "SF Mono", "Fira Code", monospace;
+    transition: border-color 0.15s;
+  }
+
+  input:focus { border-color: var(--accent); }
+  input.valid { border-color: var(--green); }
+  input.invalid { border-color: var(--red); }
+
+  .input-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .input-row input { flex: 1; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 40px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+  .btn-green { background: var(--green); color: #07190d; }
+  .btn-green:hover:not(:disabled) { opacity: 0.88; }
+  .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--muted); }
+
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  .hint a { color: var(--accent); text-decoration: none; }
+  .hint a:hover { text-decoration: underline; }
+
+  .msg {
+    font-size: 13px;
+    margin-top: 10px;
+    padding: 9px 12px;
+    border-radius: 7px;
+    display: none;
+    line-height: 1.5;
+  }
+
+  .msg.success { background: rgba(47,212,117,0.1); color: var(--green); border: 1px solid rgba(47,212,117,0.25); display: block; }
+  .msg.error { background: rgba(224,82,96,0.1); color: var(--red); border: 1px solid rgba(224,82,96,0.25); display: block; }
+  .msg.info { background: rgba(77,142,240,0.1); color: var(--accent); border: 1px solid rgba(77,142,240,0.25); display: block; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(77,142,240,0.04);
+  }
+
+  .upload-zone input { display: none; }
+  .upload-zone .uz-icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-zone .uz-label { font-size: 13px; color: var(--text2); }
+  .upload-zone .uz-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .file-list {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .file-item .rm { cursor: pointer; color: var(--muted); }
+  .file-item .rm:hover { color: var(--red); }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 28px 0;
+  }
+
+  .skip-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🎙️</div>
+  <h1>Interview Agent Universal</h1>
+  <p class="subtitle">Real-time AI co-pilot for high-stakes conversations.<br/>Complete setup once and you're ready to go.</p>
+
+  <!-- STEP 1: API KEY -->
+  <div class="step" id="step-key">
+    <div class="step-label">
+      <span class="step-num" id="num-key">1</span>
+      Anthropic API Key
+    </div>
+    <label>Your key is saved locally to <code>.env</code> and never leaves your machine.</label>
+    <div class="input-row">
+      <input type="password" id="key-input" placeholder="sk-ant-api03-..." autocomplete="off" />
+      <button class="btn btn-primary" id="verify-btn" onclick="verifyKey()">Verify</button>
+    </div>
+    <div class="hint">
+      Get your key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> &nbsp;·&nbsp;
+      <span id="show-toggle" style="cursor:pointer;color:var(--accent);" onclick="toggleShow()">Show</span>
+    </div>
+    <div class="msg" id="key-msg"></div>
+  </div>
+
+  <hr class="divider" />
+
+  <!-- STEP 2: PROFILE -->
+  <div class="step" id="step-profile" style="opacity:0.4; pointer-events:none;">
+    <div class="step-label">
+      <span class="step-num" id="num-profile">2</span>
+      Build Your Profile <span style="color:var(--muted);font-weight:400;font-size:10px;text-transform:none;letter-spacing:0;margin-left:6px;">optional — can be done later</span>
+    </div>
+    <label>Upload your CV, resume, bio, or LinkedIn PDF export. Claude will auto-generate your professional profile used as context in every session.</label>
+
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('profile-files').click()"
+         ondragover="event.preventDefault(); this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop(event)">
+      <input type="file" id="profile-files" multiple accept=".pdf,.docx,.txt" onchange="handleFiles(this.files)" />
+      <div class="uz-icon">📄</div>
+      <div class="uz-label">Click to upload or drag files here</div>
+      <div class="uz-sub">PDF, DOCX, TXT &nbsp;·&nbsp; Up to 10 files &nbsp;·&nbsp; 20 MB each</div>
+    </div>
+
+    <div class="file-list" id="file-list"></div>
+    <div class="msg" id="profile-msg"></div>
+
+    <div class="skip-row">
+      <button class="btn btn-ghost" onclick="skipToApp()">Skip for now →</button>
+      <button class="btn btn-green" id="build-btn" onclick="buildProfile()" disabled>Build Profile &amp; Launch</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let keyVerified = false;
+let selectedFiles = [];
+
+function toggleShow() {
+  const inp = document.getElementById('key-input');
+  const tog = document.getElementById('show-toggle');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    tog.textContent = 'Hide';
+  } else {
+    inp.type = 'password';
+    tog.textContent = 'Show';
+  }
+}
+
+async function verifyKey() {
+  const key = document.getElementById('key-input').value.trim();
+  const msg = document.getElementById('key-msg');
+  const btn = document.getElementById('verify-btn');
+  msg.className = 'msg';
+  msg.textContent = '';
+
+  if (!key) { showMsg('key-msg', 'error', 'Please enter your API key.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Verifying...';
+
+  try {
+    const res = await fetch('/save-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Verification failed.');
+    keyVerified = true;
+    showMsg('key-msg', 'success', '✓ Key verified and saved.');
+    document.getElementById('key-input').classList.add('valid');
+    document.getElementById('num-key').classList.add('done');
+    document.getElementById('num-key').textContent = '✓';
+    document.getElementById('step-profile').style.opacity = '1';
+    document.getElementById('step-profile').style.pointerEvents = 'auto';
+    btn.innerHTML = '✓ Verified';
+  } catch (e) {
+    showMsg('key-msg', 'error', e.message);
+    document.getElementById('key-input').classList.add('invalid');
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+  }
+}
+
+function showMsg(id, type, text) {
+  const el = document.getElementById(id);
+  el.className = 'msg ' + type;
+  el.textContent = text;
+}
+
+function handleFiles(files) {
+  for (const f of files) {
+    if (!selectedFiles.find(x => x.name === f.name)) {
+      selectedFiles.push(f);
+    }
+  }
+  renderFileList();
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+}
+
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = selectedFiles.map((f, i) => `
+    <div class="file-item">
+      <span>📄 ${f.name} <span style="color:var(--muted);font-size:11px;">(${(f.size/1024).toFixed(0)} KB)</span></span>
+      <span class="rm" onclick="removeFile(${i})">×</span>
+    </div>
+  `).join('');
+  document.getElementById('build-btn').disabled = selectedFiles.length === 0;
+}
+
+function removeFile(i) {
+  selectedFiles.splice(i, 1);
+  renderFileList();
+}
+
+async function buildProfile() {
+  if (selectedFiles.length === 0) return;
+  const btn = document.getElementById('build-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Analyzing documents...';
+  showMsg('profile-msg', 'info', 'Claude is reading your documents and building your profile. This takes about 15 seconds...');
+
+  const form = new FormData();
+  selectedFiles.forEach(f => form.append('files', f));
+
+  try {
+    const res = await fetch('/build-profile', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Profile build failed.');
+    showMsg('profile-msg', 'success', `✓ Profile built for ${data.profile.name || 'you'}. Launching app...`);
+    setTimeout(() => window.location.href = '/', 1200);
+  } catch (e) {
+    showMsg('profile-msg', 'error', e.message);
+    btn.disabled = false;
+    btn.textContent = 'Try Again';
+  }
+}
+
+function skipToApp() {
+  window.location.href = '/';
+}
+
+// Enter key on input triggers verify
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') verifyKey();
+  });
+});
+</script>
+</body>
+</html>
