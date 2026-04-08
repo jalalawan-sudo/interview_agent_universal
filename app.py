@@ -260,14 +260,16 @@ def save_key():
 # ---------------------------------------------------------------------------
 @app.route("/profile", methods=["GET"])
 def get_profile():
-    return jsonify(load_profile())
+    profile = load_profile()
+    return jsonify({"profile": profile} if profile else {})
 
 
 @app.route("/profile", methods=["POST"])
 @rate_limit(max_calls=20, window=60)
 def post_profile():
     data = request.get_json(silent=True) or {}
-    save_profile(data)
+    profile = data.get("profile", data)  # accept both {profile: {...}} and {...} directly
+    save_profile(profile)
     return jsonify({"ok": True})
 
 
