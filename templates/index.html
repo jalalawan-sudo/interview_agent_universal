@@ -2377,9 +2377,10 @@ function initSelectionButton() {
     if (text) fetchAssistFromSelection(text);
   });
 
-  // Hide on outside click
+  // Hide on click outside transcript-box and outside the button itself
   document.addEventListener('mousedown', (e) => {
-    if (e.target !== selBtn) selBtn.style.display = 'none';
+    const box = document.getElementById('transcript-box');
+    if (e.target !== selBtn && !box.contains(e.target)) selBtn.style.display = 'none';
   });
 
   // Show when user selects text inside transcript-box
@@ -2401,7 +2402,7 @@ function initSelectionButton() {
       let left = rect.left + rect.width / 2 - btnW / 2;
       left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8));
       selBtn.style.left = left + 'px';
-      selBtn.style.top  = (rect.top - 38 + window.scrollY) + 'px';
+      selBtn.style.top  = Math.max(8, rect.top - 42) + 'px';
     }, 30);
   });
 }
