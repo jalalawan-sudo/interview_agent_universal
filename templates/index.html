@@ -288,6 +288,23 @@
   #transcript-box .interim { color: var(--muted); font-style: italic; }
   #transcript-box .final { color: var(--text2); }
 
+  /* Transcript segments — one block per natural pause */
+  .transcript-segment {
+    padding: 7px 0 7px 0;
+    color: var(--text2);
+  }
+  .transcript-segment + .transcript-segment {
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+  }
+  .transcript-segment.seg-highlighted {
+    background: rgba(77,142,240,0.08);
+    border-radius: 5px;
+    padding-left: 6px;
+    margin-left: -6px;
+    transition: background 0.6s ease-out;
+  }
+
   /* CENTER — RESPONSE */
   .panel-response {
     flex: 1;
@@ -365,11 +382,25 @@
     40% { opacity: 1; }
   }
 
+  /* RESIZE HANDLES between panels */
+  .resize-handle {
+    width: 5px;
+    background: var(--border);
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    position: relative;
+    z-index: 2;
+  }
+  .resize-handle:hover, .resize-handle.dragging {
+    background: var(--accent);
+  }
+
   /* RIGHT — HISTORY */
   .panel-history {
     width: 22%;
     min-width: 185px;
-    border-left: 1px solid var(--border);
+    border-left: none;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -415,11 +446,26 @@
     border-radius: 3px;
   }
 
-  .h-text {
+  /* h-text replaced by h-text-block for two-line layout */
+  .h-text-block {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .h-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .h-preview {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    font-weight: 400;
   }
 
   .h-chevron {
@@ -1037,6 +1083,10 @@
   .source-chip.loading { border-color: var(--accent); color: var(--accent); }
   .source-chip.error { border-color: var(--red); color: var(--red); }
 
+  /* Bullet text is clickable to scroll transcript */
+  .bullet-text { cursor: pointer; }
+  .bullet-text:hover { color: var(--accent); transition: color 0.15s; }
+
   /* ---- SCROLLBARS ---- */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -1101,13 +1151,15 @@
   <div class="panels">
 
     <!-- LEFT: TRANSCRIPT -->
-    <div class="panel-transcript">
+    <div class="panel-transcript" id="panel-transcript">
       <div class="panel-label">Transcript</div>
       <div id="transcript-box"></div>
     </div>
 
+    <div class="resize-handle" id="rh1" title="Drag to resize"></div>
+
     <!-- CENTER: RESPONSE -->
-    <div class="panel-response">
+    <div class="panel-response" id="panel-response">
       <div class="panel-label">Talking Points</div>
       <div id="response-box" class="listening-state">
         <span class="ls-title">Press Start to begin</span>
@@ -1115,8 +1167,10 @@
       </div>
     </div>
 
+    <div class="resize-handle" id="rh2" title="Drag to resize"></div>
+
     <!-- RIGHT: HISTORY -->
-    <div class="panel-history">
+    <div class="panel-history" id="panel-history">
       <div class="panel-label">History</div>
       <div id="history-list">
         <div class="history-empty" id="history-empty">Previous responses<br/>will appear here</div>
@@ -1510,17 +1564,24 @@ let responseHistory = [];
 let historyCounter = 0;
 
 function extractTitle(content) {
-  const bold = content.match(/\*\*([^*\n]{3,40})\*\*/);
-  if (bold) return bold[1];
-  const words = content.replace(/\*+/g, '').trim().split(/\s+/).slice(0, 5).join(' ');
-  return words.length > 3 ? words + '...' : 'Response';
+  // Title: first bold term
+  const bold = content.match(/\*\*([^*\n]{3,50})\*\*/);
+  const title = bold ? bold[1] : (content.replace(/\*+/g, '').trim().split(/\s+/).slice(0, 5).join(' ') || 'Response');
+  // Preview: first bullet text, slightly longer for context
+  const bullet = content.match(/^[-*]\s+(.+)$/m);
+  let preview = '';
+  if (bullet) {
+    preview = bullet[1].replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*+/g, '').trim();
+    if (preview.length > 90) preview = preview.slice(0, 88) + '…';
+  }
+  return { title, preview };
 }
 
 function addToHistory(content) {
   if (!content || content.trim().length < 20) return;
   historyCounter++;
-  const title = extractTitle(content);
-  responseHistory.unshift({ id: historyCounter, title, content });
+  const { title, preview } = extractTitle(content);
+  responseHistory.unshift({ id: historyCounter, title, preview, content });
   renderHistoryPanel();
 }
 
@@ -1537,7 +1598,10 @@ function renderHistoryPanel() {
     <div class="history-item" id="hitem-${item.id}" onclick="toggleHistory(${item.id})">
       <div class="history-title">
         <span class="h-num">#${item.id}</span>
-        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(item.title)}</span>
+        <div class="h-text-block">
+          <div class="h-text">${escHtml(item.title)}</div>
+          ${item.preview ? `<div class="h-preview">${escHtml(item.preview)}</div>` : ''}
+        </div>
         <span class="h-chevron">&#9660;</span>
       </div>
       <div class="history-body">${renderMarkdown(item.content)}</div>
@@ -1592,16 +1656,18 @@ const _expandPoints = {};
 let _epCounter = 0;
 
 // Render markdown WITH tick/cross/expand buttons (used after stream completes)
-function renderMarkdownWithFeedback(text) {
+// segId links each bullet to its transcript segment for click-to-scroll
+function renderMarkdownWithFeedback(text, segId) {
   let html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/^[-*]\s+(.+)$/gm, (match, content) => {
     const plainText = content.replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
     const escaped = plainText.replace(/"/g, '&quot;');
     const uid = 'ep' + (++_epCounter);
     _expandPoints[uid] = plainText;
-    return `<div class="bullet-row">
+    const segAttr = segId ? ` data-seg-id="${segId}"` : '';
+    return `<div class="bullet-row"${segAttr}>
       <div class="bullet-main">
-        <div class="bullet-text">&#8226;&nbsp;${content}</div>
+        <div class="bullet-text" title="Click to highlight in transcript">&#8226;&nbsp;${content}</div>
         <div class="expansion-panel" id="${uid}"></div>
       </div>
       <div class="bullet-fb">
@@ -1966,6 +2032,10 @@ let lastSentIndex = 0;
 let debounceTimer = null;
 let currentAssistAbort = null;
 
+// Transcript segment tracking — one section per natural pause
+let transcriptSections = [];  // {startIdx, endIdx, segId}
+let sectionCounter = 0;
+
 function initRecognition() {
   if (!SpeechRecognition) {
     alert('Speech recognition is not supported in this browser. Please use Google Chrome.');
@@ -2007,9 +2077,26 @@ function initRecognition() {
 
 function renderTranscript(interim) {
   const box = document.getElementById('transcript-box');
-  box.innerHTML =
-    '<span class="final">' + escHtml(fullTranscript) + '</span>' +
-    (interim ? '<span class="interim">' + escHtml(interim) + '</span>' : '');
+  let html = '';
+  let pos = 0;
+
+  for (const sec of transcriptSections) {
+    const chunk = fullTranscript.slice(sec.startIdx, sec.endIdx);
+    if (chunk.trim()) {
+      html += `<div class="transcript-segment" id="ts-${sec.segId}">${escHtml(chunk)}</div>`;
+    }
+    pos = sec.endIdx;
+  }
+
+  // Current unsent portion + interim
+  const remaining = fullTranscript.slice(pos);
+  const remainHtml = remaining ? escHtml(remaining) : '';
+  const interimHtml = interim ? `<span class="interim"> ${escHtml(interim)}</span>` : '';
+  if (remainHtml || interimHtml) {
+    html += `<div class="transcript-segment">${remainHtml}${interimHtml}</div>`;
+  }
+
+  box.innerHTML = html;
   box.scrollTop = box.scrollHeight;
 }
 
@@ -2039,6 +2126,8 @@ function stopListening() {
 function clearTranscript() {
   fullTranscript = '';
   lastSentIndex = 0;
+  transcriptSections = [];
+  sectionCounter = 0;
   responseHistory = [];
   historyCounter = 0;
   if (currentAssistAbort) { currentAssistAbort.abort(); currentAssistAbort = null; }
@@ -2080,6 +2169,8 @@ async function fetchAssist() {
   if (!newText || newText.length < 15) return;
 
   const sentUpTo = fullTranscript.length;
+  const thisSecId = ++sectionCounter;
+  const secStartIdx = lastSentIndex;
 
   if (currentAssistAbort) currentAssistAbort.abort();
   currentAssistAbort = new AbortController();
@@ -2135,8 +2226,11 @@ async function fetchAssist() {
       }
     }
 
-    block.innerHTML = renderMarkdownWithFeedback(accumulated);
+    block.innerHTML = renderMarkdownWithFeedback(accumulated, thisSecId);
     lastSentIndex = sentUpTo;
+    // Record this speech segment so transcript can highlight it
+    transcriptSections.push({ startIdx: secStartIdx, endIdx: sentUpTo, segId: thisSecId });
+    renderTranscript('');
     addToHistory(accumulated);
 
   } catch (err) {
@@ -2210,6 +2304,77 @@ function copySummary() {
   const text = document.getElementById('summary-body').innerText;
   navigator.clipboard.writeText(text).then(() => alert('Summary copied to clipboard.'));
 }
+
+// =====================================================================
+// PANEL RESIZE HANDLES
+// =====================================================================
+(function initResizeHandles() {
+  const leftPanel   = document.getElementById('panel-transcript');
+  const centerPanel = document.getElementById('panel-response');
+  const rightPanel  = document.getElementById('panel-history');
+  const rh1 = document.getElementById('rh1');
+  const rh2 = document.getElementById('rh2');
+  if (!rh1 || !rh2) return;
+
+  // Convert panels from CSS % / flex to explicit px so dragging works immediately
+  function lockWidths() {
+    [leftPanel, centerPanel, rightPanel].forEach(p => {
+      p.style.width = p.offsetWidth + 'px';
+      p.style.flex  = 'none';
+      p.style.minWidth = '0';
+    });
+  }
+
+  function setupHandle(handle, leftEl, rightEl) {
+    let dragging = false, startX = 0, startLeft = 0, startRight = 0;
+    handle.addEventListener('mousedown', e => {
+      lockWidths();
+      dragging = true;
+      startX = e.clientX;
+      startLeft  = leftEl.offsetWidth;
+      startRight = rightEl.offsetWidth;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const delta = e.clientX - startX;
+      const nl = Math.max(130, startLeft  + delta);
+      const nr = Math.max(130, startRight - delta);
+      leftEl.style.width  = nl + 'px';
+      rightEl.style.width = nr + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  setupHandle(rh1, leftPanel, centerPanel);
+  setupHandle(rh2, centerPanel, rightPanel);
+})();
+
+// =====================================================================
+// CLICK TALKING POINT → SCROLL TRANSCRIPT TO SEGMENT
+// =====================================================================
+document.getElementById('response-box').addEventListener('click', function(e) {
+  const bulletText = e.target.closest('.bullet-text');
+  if (!bulletText) return;
+  const row = bulletText.closest('.bullet-row');
+  if (!row) return;
+  const segId = row.dataset.segId;
+  if (!segId) return;
+  const segEl = document.getElementById('ts-' + segId);
+  if (!segEl) return;
+  segEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  segEl.classList.add('seg-highlighted');
+  setTimeout(() => segEl.classList.remove('seg-highlighted'), 1600);
+});
 
 // =====================================================================
 // INIT
