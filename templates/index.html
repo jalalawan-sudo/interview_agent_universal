@@ -1083,9 +1083,62 @@
   .source-chip.loading { border-color: var(--accent); color: var(--accent); }
   .source-chip.error { border-color: var(--red); color: var(--red); }
 
-  /* Bullet text is clickable to scroll transcript */
+  /* Bullet text is clickable (single = scroll transcript, double = related history) */
   .bullet-text { cursor: pointer; }
   .bullet-text:hover { color: var(--accent); transition: color 0.15s; }
+
+  /* Floating button that appears on transcript text selection */
+  #sel-tp-btn {
+    position: fixed;
+    display: none;
+    z-index: 55;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 5px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.55);
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+  }
+  #sel-tp-btn:hover { opacity: 0.88; }
+  #sel-tp-btn::before { content: '⚡ '; }
+
+  /* Related-history popup on bullet double-click */
+  #related-popup {
+    position: fixed;
+    z-index: 65;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 14px 16px;
+    max-width: 450px;
+    max-height: 360px;
+    overflow-y: auto;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.65);
+    display: none;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  #related-popup .rp-header {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  #related-popup .rp-item {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  #related-popup .rp-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  #related-popup .rp-num { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+  #related-popup .rp-content { color: var(--text2); }
 
   /* ---- SCROLLBARS ---- */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -2306,6 +2359,182 @@ function copySummary() {
 }
 
 // =====================================================================
+// TRANSCRIPT SELECTION → TALKING POINTS
+// =====================================================================
+let selBtn = null;
+let selBtnSelectedText = '';
+
+function initSelectionButton() {
+  selBtn = document.createElement('button');
+  selBtn.id = 'sel-tp-btn';
+  selBtn.textContent = 'Talking Points from Selection';
+  document.body.appendChild(selBtn);
+
+  selBtn.addEventListener('click', () => {
+    const text = selBtnSelectedText;
+    selBtn.style.display = 'none';
+    window.getSelection()?.removeAllRanges();
+    if (text) fetchAssistFromSelection(text);
+  });
+
+  // Hide on outside click
+  document.addEventListener('mousedown', (e) => {
+    if (e.target !== selBtn) selBtn.style.display = 'none';
+  });
+
+  // Show when user selects text inside transcript-box
+  document.getElementById('transcript-box').addEventListener('mouseup', () => {
+    // Small delay so selection is finalized
+    setTimeout(() => {
+      const sel = window.getSelection();
+      const text = sel ? sel.toString().trim() : '';
+      if (text.length < 10) { selBtn.style.display = 'none'; return; }
+      // Confirm selection is inside transcript-box
+      const box = document.getElementById('transcript-box');
+      const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+      if (!range || !box.contains(range.commonAncestorContainer)) { selBtn.style.display = 'none'; return; }
+      selBtnSelectedText = text;
+      const rect = range.getBoundingClientRect();
+      selBtn.style.display = 'block';
+      // Position above the selection, centered
+      const btnW = 230;
+      let left = rect.left + rect.width / 2 - btnW / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8));
+      selBtn.style.left = left + 'px';
+      selBtn.style.top  = (rect.top - 38 + window.scrollY) + 'px';
+    }, 30);
+  });
+}
+
+// Generate talking points from selected transcript text only.
+// Current center-panel content is already in history — just clear and replace.
+async function fetchAssistFromSelection(selectedText) {
+  const box = document.getElementById('response-box');
+  box.classList.remove('listening-state');
+  box.innerHTML = ''; // clear current (already in history)
+
+  if (currentAssistAbort) currentAssistAbort.abort();
+  currentAssistAbort = new AbortController();
+
+  const block = document.createElement('div');
+  block.className = 'response-block';
+  block.innerHTML = '<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>';
+  box.appendChild(block);
+
+  // Visual label so user knows this is selection-driven
+  const label = document.createElement('div');
+  label.style.cssText = 'font-size:10px;color:var(--muted);padding:6px 10px 0;text-transform:uppercase;letter-spacing:0.4px;';
+  label.textContent = '⚡ From selection';
+  box.insertBefore(label, block);
+
+  try {
+    const fb = getPointFeedback();
+    const res = await fetch('/assist-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: selectedText,
+        briefing: activeBriefing,
+        badPoints:  fb.bad.slice(0, 12).map(p => p.text),
+        goodPoints: fb.good.slice(0, 6).map(p => p.text),
+      }),
+      signal: currentAssistAbort.signal,
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = '';
+    block.innerHTML = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ')) {
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') break;
+          try { accumulated += JSON.parse(raw); block.innerHTML = renderMarkdown(accumulated); } catch {}
+        }
+      }
+    }
+
+    block.innerHTML = renderMarkdownWithFeedback(accumulated, null);
+    addToHistory(accumulated);
+
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      block.innerHTML = '<span style="color:var(--red);font-size:13px;">Error — check server</span>';
+    }
+  }
+}
+
+// =====================================================================
+// DOUBLE-CLICK TALKING POINT → RELATED HISTORY
+// =====================================================================
+let relPopup = null;
+
+function initRelatedPopup() {
+  relPopup = document.createElement('div');
+  relPopup.id = 'related-popup';
+  document.body.appendChild(relPopup);
+
+  document.addEventListener('mousedown', (e) => {
+    if (relPopup && !relPopup.contains(e.target)) relPopup.style.display = 'none';
+  });
+}
+
+// Simple keyword overlap: find history items sharing meaningful words with the bullet
+function findRelatedHistory(bulletText) {
+  const stopWords = new Set(['which','where','their','these','would','could','about','under','other','being','those','using','should','after','before','between','within','while','from','that','this','with','have','been','will','they','when','than','what','there']);
+  const keywords = bulletText.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 4 && !stopWords.has(w));
+
+  if (keywords.length === 0) return [];
+  const threshold = Math.max(2, Math.ceil(keywords.length * 0.25));
+
+  return responseHistory.filter(item => {
+    const body = item.content.toLowerCase();
+    return keywords.filter(k => body.includes(k)).length >= threshold;
+  }).slice(0, 6);
+}
+
+document.getElementById('response-box').addEventListener('dblclick', function(e) {
+  const bulletEl = e.target.closest('.bullet-text');
+  if (!bulletEl) return;
+  const raw = bulletEl.innerText.replace(/^[•\-\*]\s*/, '').trim();
+  const related = findRelatedHistory(raw);
+
+  const rect = bulletEl.getBoundingClientRect();
+  relPopup.style.display = 'block';
+
+  // Position below bullet, constrained to viewport
+  let top  = rect.bottom + 6;
+  let left = rect.left;
+  const popW = 450, popH = 360;
+  if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+  if (top + popH > window.innerHeight - 8) top = rect.top - popH - 6;
+  relPopup.style.left = Math.max(8, left) + 'px';
+  relPopup.style.top  = Math.max(8, top)  + 'px';
+
+  if (related.length === 0) {
+    relPopup.innerHTML = '<div class="rp-header">Related history</div><div style="color:var(--muted);font-size:12px;">No related talking points found yet — more history builds context.</div>';
+    return;
+  }
+
+  relPopup.innerHTML =
+    `<div class="rp-header">Related from history (${related.length})</div>` +
+    related.map(item =>
+      `<div class="rp-item">
+        <div class="rp-num">#${item.id} &mdash; ${escHtml(item.title)}</div>
+        <div class="rp-content">${renderMarkdown(item.content)}</div>
+      </div>`
+    ).join('');
+});
+
+// =====================================================================
 // PANEL RESIZE HANDLES
 // =====================================================================
 (function initResizeHandles() {
@@ -2383,6 +2612,8 @@ document.getElementById('response-box').addEventListener('click', function(e) {
   loadProfile();
   renderSessionList();
   updateQuickRefBar();
+  initSelectionButton();
+  initRelatedPopup();
 })();
 </script>
 </body>
