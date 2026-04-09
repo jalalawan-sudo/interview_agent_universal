@@ -2377,33 +2377,30 @@ function initSelectionButton() {
     if (text) fetchAssistFromSelection(text);
   });
 
-  // Hide on click outside transcript-box and outside the button itself
-  document.addEventListener('mousedown', (e) => {
-    const box = document.getElementById('transcript-box');
-    if (e.target !== selBtn && !box.contains(e.target)) selBtn.style.display = 'none';
-  });
-
-  // Show when user selects text inside transcript-box
-  document.getElementById('transcript-box').addEventListener('mouseup', () => {
-    // Small delay so selection is finalized
+  // Use document-level mouseup so drag-selections that end outside the box still register
+  document.addEventListener('mouseup', (e) => {
+    if (e.target === selBtn) return; // ignore clicks on the button itself
     setTimeout(() => {
       const sel = window.getSelection();
       const text = sel ? sel.toString().trim() : '';
       if (text.length < 10) { selBtn.style.display = 'none'; return; }
-      // Confirm selection is inside transcript-box
       const box = document.getElementById('transcript-box');
       const range = sel.rangeCount ? sel.getRangeAt(0) : null;
       if (!range || !box.contains(range.commonAncestorContainer)) { selBtn.style.display = 'none'; return; }
       selBtnSelectedText = text;
       const rect = range.getBoundingClientRect();
       selBtn.style.display = 'block';
-      // Position above the selection, centered
-      const btnW = 230;
+      const btnW = 240;
       let left = rect.left + rect.width / 2 - btnW / 2;
       left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8));
       selBtn.style.left = left + 'px';
-      selBtn.style.top  = Math.max(8, rect.top - 42) + 'px';
+      selBtn.style.top  = Math.max(8, rect.top - 44) + 'px';
     }, 30);
+  });
+
+  // Hide when clicking anywhere that isn't the button
+  document.addEventListener('mousedown', (e) => {
+    if (e.target !== selBtn) selBtn.style.display = 'none';
   });
 }
 
