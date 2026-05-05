@@ -142,13 +142,21 @@ BASE_SYSTEM_PROMPT = """You are a real-time interview assistant for {name}. You 
 ## EXPERTISE AREAS (from profile + general knowledge):
 {expertise_block}
 
-## WHEN A SESSION BRIEFING IS PROVIDED:
-Prioritize it as your primary reference. Cite its specific numbers, provisions, and details directly.
+## WHEN SESSION DOCUMENTS ARE PROVIDED:
+You have been given interview prep documents that were loaded at session start. These documents contain detailed research on the interviewer(s), their publications, methods, findings, and how to connect their work to this candidate's background.
+
+MANDATORY — when session documents are loaded:
+- READ and USE the documents as your PRIMARY reference for ALL talking points
+- Cite SPECIFIC paper titles, findings, dollar figures, docket numbers, statistics from the documents
+- When the conversation touches any topic covered in the documents, pull the EXACT data — do not generalize
+- Reference the interviewer's specific papers, methods, and conclusions by name
+- Connect document content to the candidate's CPUC/TURN work where relevant (these "JALAL ANGLE" connections are explicitly mapped in the documents)
+- NEVER ignore document content in favor of generic answers when a relevant document section exists
 
 ## RESPONSE FORMAT (STRICT):
 - 2 to 3 bullet points MAXIMUM — quality over quantity
 - **Bold** the KEY TERM or DATA POINT at the start of each bullet
-- Use specific numbers, legislation names, dollar figures, dates — from the briefing if available, from your expertise otherwise
+- Use specific numbers, legislation names, dollar figures, dates — from the session documents if available, from your expertise otherwise
 - No hyperlinks in live bullets (those go in the post-call summary only)
 - Always give a substantive response — even if the transcript is partial, use whatever context exists
 
@@ -392,8 +400,8 @@ def assist_stream():
     profile = load_profile()
     system = build_system_prompt(profile)
 
-    context_block = f"SESSION BRIEFING:\n{session_briefing}\n\n---\n" if session_briefing else ""
-    user_msg = f"{context_block}Conversation excerpt:\n\n{transcript}\n\nProvide concise talking points."
+    context_block = f"SESSION DOCUMENTS (read in full — cite specific content from these in every response):\n{session_briefing}\n\n---\n" if session_briefing else ""
+    user_msg = f"{context_block}Conversation excerpt:\n\n{transcript}\n\nProvide concise talking points. Reference specific papers, findings, and data from the session documents where relevant."
 
     if bad_points:
         user_msg += "\n\nDO NOT repeat or rephrase these (marked not useful):\n" + "\n".join(f"- {p}" for p in bad_points)
@@ -440,7 +448,7 @@ def summary():
     profile = load_profile()
     system = build_system_prompt(profile)
 
-    brief_block = f"SESSION BRIEFING:\n{session_briefing}\n\n---\n" if session_briefing else ""
+    brief_block = f"SESSION DOCUMENTS:\n{session_briefing}\n\n---\n" if session_briefing else ""
     prompt = f"""Session: {session_name}
 
 {brief_block}FULL TRANSCRIPT:
@@ -476,14 +484,14 @@ def expand():
 
     data = request.get_json(silent=True) or {}
     point = str(data.get("point", "")).strip()[:500]
-    briefing = str(data.get("briefing", "")).strip()[:8000]
+    briefing = str(data.get("briefing", "")).strip()[:60000]
 
     if not point:
         return Response(stream_with_context(iter([])), mimetype="text/event-stream")
 
     profile = load_profile()
     system = build_system_prompt(profile)
-    context = f"SESSION BRIEFING:\n{briefing}\n\n---\n" if briefing else ""
+    context = f"SESSION DOCUMENTS:\n{briefing}\n\n---\n" if briefing else ""
     user_msg = f"""{context}The user wants a deeper, more detailed explanation of this specific talking point:
 
 \"{point}\"
@@ -516,6 +524,69 @@ Be authoritative and specific. No hedging or deflecting."""
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.route("/load-docs", methods=["POST"])
+@rate_limit(max_calls=20, window=60)
+def load_docs():
+    """
+    Bulk document loader for session initialization.
+    Accepts multiple PDF/DOCX/TXT files, extracts ALL text from each,
+    and returns combined content as a single session document block.
+    """
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "No files uploaded."}), 400
+
+    combined_parts = []
+    loaded_names = []
+    errors = []
+
+    for f in files[:20]:  # max 20 files
+        fname = secure_filename(f.filename)
+        ext = Path(fname).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            errors.append(f"{fname}: unsupported type")
+            continue
+        raw = f.read()
+        text = ""
+
+        if ext == ".pdf":
+            try:
+                import pdfplumber
+                with pdfplumber.open(io.BytesIO(raw)) as pdf:
+                    pages = [p.extract_text() or "" for p in pdf.pages]
+                    text = "\n\n".join(p for p in pages if p.strip())
+            except Exception as e:
+                errors.append(f"{fname}: PDF error — {str(e)[:80]}")
+                continue
+
+        elif ext == ".docx":
+            try:
+                import docx as docx_lib
+                doc = docx_lib.Document(io.BytesIO(raw))
+                text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            except Exception as e:
+                errors.append(f"{fname}: DOCX error — {str(e)[:80]}")
+                continue
+
+        elif ext == ".txt":
+            text = raw.decode("utf-8", errors="ignore")
+
+        if text.strip():
+            combined_parts.append(f"=== DOCUMENT: {fname} ===\n\n{text.strip()}")
+            loaded_names.append(fname)
+
+    if not combined_parts:
+        return jsonify({"error": "No text could be extracted from the uploaded files.", "errors": errors}), 400
+
+    combined = "\n\n\n".join(combined_parts)
+    return jsonify({
+        "text": combined,
+        "files": loaded_names,
+        "char_count": len(combined),
+        "errors": errors,
+    })
 
 
 @app.route("/extract", methods=["POST"])
@@ -587,4 +658,4 @@ def extract():
 
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5055, host="127.0.0.1")
+    app.run(debug=False, port=5057, host="127.0.0.1")

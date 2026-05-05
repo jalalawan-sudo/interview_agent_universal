@@ -1154,6 +1154,7 @@
   <span class="header-name" id="header-name">Interview Agent</span>
   <span class="header-sep">/</span>
   <span class="header-sub" id="header-sub">Universal</span>
+  <span style="font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.06em;margin-left:8px;opacity:.7;">Rev 1</span>
   <div id="clock"></div>
 </header>
 
@@ -1230,6 +1231,42 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- SESSION DOCS LOADER -->
+  <div id="session-docs-bar" style="
+    display:flex; align-items:center; gap:10px;
+    padding:8px 16px; background:var(--surface2);
+    border-top:1px solid var(--border); flex-wrap:wrap;
+  ">
+    <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">Session Docs</span>
+    <div id="session-docs-dropzone"
+         style="
+           display:flex; align-items:center; gap:8px; padding:5px 12px;
+           border:1.5px dashed var(--border); border-radius:6px; cursor:pointer;
+           font-size:12px; color:var(--text2); background:var(--surface);
+           transition:border-color .15s, background .15s;
+         "
+         onclick="document.getElementById('session-docs-input').click()"
+         ondragover="event.preventDefault(); this.style.borderColor='var(--accent)'"
+         ondragleave="this.style.borderColor='var(--border)'"
+         ondrop="event.preventDefault(); this.style.borderColor='var(--border)'; loadSessionDocs(event.dataTransfer.files)">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="opacity:.6">
+        <path d="M7 1v8M4 4l3-3 3 3M2 10h10v2H2z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Load interview prep docs (PDF / DOCX / TXT)
+    </div>
+    <input type="file" id="session-docs-input" multiple accept=".pdf,.docx,.txt"
+           style="display:none" onchange="loadSessionDocs(this.files)" />
+    <div id="session-docs-status" style="font-size:12px; color:var(--muted); display:none;">
+      <!-- filled by JS -->
+    </div>
+    <button id="session-docs-clear" onclick="clearSessionDocs()"
+            style="display:none; font-size:11px; padding:3px 8px; background:transparent;
+                   border:1px solid var(--border); border-radius:4px; color:var(--muted);
+                   cursor:pointer;">
+      Clear docs
+    </button>
   </div>
 
   <!-- QUICK REF BAR -->
@@ -1795,6 +1832,87 @@ async function expandPoint(btn, uid) {
     btn.classList.remove('open');
     panel.classList.remove('open');
   }
+}
+
+// =====================================================================
+// =====================================================================
+// SESSION DOCS — bulk load at session start, auto-activates as briefing
+// =====================================================================
+let sessionDocsText = '';
+let sessionDocsNames = [];
+
+async function loadSessionDocs(files) {
+  if (!files || files.length === 0) return;
+
+  const status = document.getElementById('session-docs-status');
+  const clearBtn = document.getElementById('session-docs-clear');
+  const dropzone = document.getElementById('session-docs-dropzone');
+
+  status.style.display = 'inline';
+  status.style.color = 'var(--muted)';
+  status.textContent = `Loading ${files.length} file${files.length > 1 ? 's' : ''}...`;
+  dropzone.style.pointerEvents = 'none';
+  dropzone.style.opacity = '0.5';
+
+  const form = new FormData();
+  for (const f of files) form.append('files', f);
+
+  try {
+    const res = await fetch('/load-docs', { method: 'POST', body: form });
+    const data = await res.json();
+
+    if (data.error) {
+      status.style.color = 'var(--red)';
+      status.textContent = data.error;
+      dropzone.style.pointerEvents = '';
+      dropzone.style.opacity = '';
+      return;
+    }
+
+    sessionDocsText = data.text;
+    sessionDocsNames = data.files;
+
+    // Auto-activate as session briefing (overrides/extends existing)
+    activeBriefing = sessionDocsText;
+
+    const kb = Math.round(data.char_count / 1024);
+    status.style.color = 'var(--green, #4ade80)';
+    status.style.display = 'inline';
+    status.innerHTML = `&#10003; Loaded: <strong>${sessionDocsNames.join(', ')}</strong> (${kb} KB) — Active`;
+    clearBtn.style.display = 'inline';
+    dropzone.style.pointerEvents = '';
+    dropzone.style.opacity = '';
+
+    // Update header subtitle
+    const shortNames = sessionDocsNames.map(n => n.replace(/\.(pdf|docx|txt)$/i, '')).join(' + ');
+    document.getElementById('header-sub').textContent = shortNames + ' — Loaded';
+
+    // Update quick-ref bar
+    updateQuickRefBar();
+
+    if (data.errors && data.errors.length > 0) {
+      console.warn('Session doc load warnings:', data.errors);
+    }
+  } catch (e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Error: ' + e.message;
+    dropzone.style.pointerEvents = '';
+    dropzone.style.opacity = '';
+  }
+}
+
+function clearSessionDocs() {
+  sessionDocsText = '';
+  sessionDocsNames = [];
+  // Only clear activeBriefing if it came from session docs (not a manually set session)
+  if (activeBriefing === sessionDocsText || !activeSessionId) {
+    activeBriefing = '';
+    document.getElementById('header-sub').textContent = 'Universal';
+  }
+  document.getElementById('session-docs-status').style.display = 'none';
+  document.getElementById('session-docs-clear').style.display = 'none';
+  document.getElementById('session-docs-input').value = '';
+  updateQuickRefBar();
 }
 
 // =====================================================================

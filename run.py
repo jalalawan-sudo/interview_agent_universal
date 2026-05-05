@@ -47,7 +47,7 @@ def has_api_key() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
 
-PORT = 5055
+PORT = 5057
 
 
 def free_port():
